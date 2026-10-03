@@ -122,6 +122,16 @@ pub const RELAY_PORT: i32 = 21117;
 pub const WS_RENDEZVOUS_PORT: i32 = 21118;
 pub const WS_RELAY_PORT: i32 = 21119;
 
+// 自建服务器 TLS 钉扎：目标地址命中以下任一域名时，TCP 连接走 rustls + SPKI 指纹校验。
+pub const SELF_HOSTED_TLS_HOSTS: &[&str] = &["rd-id.shryj.ltd", "rd-relay.shryj.ltd"];
+
+// 自建服务器证书 SPKI(SubjectPublicKeyInfo) 的 SHA-256 指纹（hex 小写）。
+// 只钉公钥不钉整张证书：同密钥续期无需改此常量。
+// 更换证书后用以下命令重新生成并替换：
+// openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+pub const SELF_HOSTED_SPKI_SHA256: &str =
+    "ddf50d432fbee71b1e4f97ae6cfc6e09e70a2286cf52ca3481bfeba6d0bab99c";
+
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
     // `_service` is a protected cross-user IPC channel used by the root service.

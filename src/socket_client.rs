@@ -8,8 +8,10 @@ use crate::{
     ResultType, Stream,
 };
 use anyhow::Context;
+use rustls_pki_types::ServerName;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::{ToSocketAddrs, UdpSocket};
+use tokio_rustls::TlsConnector;
 use tokio_socks::{IntoTargetAddr, TargetAddr};
 
 #[inline]
@@ -161,6 +163,12 @@ pub async fn connect_tcp_local<
         ));
     }
 
+    // 自建服务器走 TLS 钉扎连接（socks 代理场景不适用，已于上方返回）
+    let target_str = target.to_string();
+    if is_self_hosted_target(&target_str) {
+        return connect_tls(&target_str, ms_timeout).await;
+    }
+
     if let Some(target_addr) = target.resolve() {
         if let Some(local_addr) = local {
             if local_addr.is_ipv6() && target_addr.is_ipv4() {
@@ -175,6 +183,35 @@ pub async fn connect_tcp_local<
     Ok(Stream::Tcp(
         FramedStream::new(target, local, ms_timeout).await?,
     ))
+}
+
+/// 目标地址是否命中自建服务器域名（rendezvous / relay），命中则连接走 TLS 钉扎。
+/// P2P 直连目标是 IP:port，不会命中。
+pub fn is_self_hosted_target(target: &str) -> bool {
+    crate::config::SELF_HOSTED_TLS_HOSTS
+        .iter()
+        .any(|h| target.contains(h))
+}
+
+/// 自建服务器 TLS 连接：TCP 连接后用 rustls 握手（SPKI 钉扎验证），
+/// 包装成 FramedStream，对上层与普通 TCP Stream 用法一致。
+async fn connect_tls(target: &str, ms_timeout: u64) -> ResultType<Stream> {
+    // target 为 "host:port"，host 为域名（非 ipv6），取端口前部分作 SNI
+    let host = split_host_port(target)
+        .map(|(h, _)| h)
+        .unwrap_or_else(|| target.to_owned());
+    let tcp = super::timeout(ms_timeout, tokio::net::TcpStream::connect(target))
+        .await
+        .with_context(|| format!("Failed to connect to {target}"))??;
+    tcp.set_nodelay(true).ok();
+    let local_addr = tcp.local_addr()?;
+    let server_name = ServerName::try_from(host.clone())
+        .with_context(|| format!("Invalid TLS server name {host}"))?;
+    let connector = TlsConnector::from(Arc::new(crate::verifier::client_config_pinned()?));
+    let tls = super::timeout(ms_timeout, connector.connect(server_name, tcp))
+        .await
+        .context("TLS handshake timeout")??;
+    Ok(Stream::Tcp(FramedStream::from(tls, local_addr)))
 }
 
 #[inline]
