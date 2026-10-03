@@ -324,7 +324,7 @@ fn extract_spki(cert_der: &[u8]) -> Option<&[u8]> {
         return None;
     }
     let tbs = cert_der.get(hdr..hdr + len)?;
-    let (tag, hdr, len) = der_tlv(tbs)?;
+    let (tag, hdr, _len) = der_tlv(tbs)?;
     if tag != 0x30 {
         return None;
     }

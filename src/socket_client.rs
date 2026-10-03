@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::Context;
 use rustls_pki_types::ServerName;
-use std::{net::SocketAddr, sync::Arc};
+use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use tokio::net::{ToSocketAddrs, UdpSocket};
 use tokio_rustls::TlsConnector;
 use tokio_socks::{IntoTargetAddr, TargetAddr};
